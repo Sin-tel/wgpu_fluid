@@ -1,28 +1,24 @@
 use crate::camera::Camera;
-use crate::instance::{Instance, InstanceRaw};
-use crate::mesh::{load_mesh, DrawMesh, Mesh, MeshVertex};
+use crate::mesh::MeshVertex;
+use crate::particle::{ParticleRaw, Particles};
 use crate::texture::Texture;
-use rand::{thread_rng, Rng};
 use std::iter;
 use std::time::Instant;
-use wgpu::util::DeviceExt;
-use winit::{event::*, window::Window};
+use winit::window::Window;
 
 pub struct State {
+	window: Window,
 	surface: wgpu::Surface,
+	smaa_target: smaa::SmaaTarget,
+	depth_texture: Texture,
 	device: wgpu::Device,
 	queue: wgpu::Queue,
 	config: wgpu::SurfaceConfiguration,
 	size: winit::dpi::PhysicalSize<u32>,
+	global_bind_group: wgpu::BindGroup,
 	render_pipeline: wgpu::RenderPipeline,
-	sphere_mesh: Mesh,
-	camera: Camera,
-	instances: Vec<Instance>,
-	#[allow(dead_code)]
-	instance_buffer: wgpu::Buffer,
-	depth_texture: Texture,
-	window: Window,
-	smaa_target: smaa::SmaaTarget,
+	pub camera: Camera,
+	particles: Particles,
 	timer: Instant,
 }
 
@@ -54,20 +50,16 @@ impl State {
 					features: wgpu::Features::empty(),
 					limits: wgpu::Limits::default(),
 				},
-				// Some(&std::path::Path::new("trace")), // Trace path
-				None, // Trace path
+				None,
 			)
 			.await
 			.unwrap();
 
 		log::warn!("Surface");
-		let surface_caps = surface.get_capabilities(&adapter);
-		let surface_format = surface_caps
-			.formats
-			.iter()
-			.copied()
-			.find(|f| f.describe().srgb)
-			.unwrap_or(surface_caps.formats[0]);
+		// let surface_caps = surface.get_capabilities(&adapter);
+
+		let surface_format = wgpu::TextureFormat::Rgba8UnormSrgb;
+
 		let config = wgpu::SurfaceConfiguration {
 			usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
 			format: surface_format,
@@ -75,52 +67,61 @@ impl State {
 			height: size.height,
 			// Fifo is a strange way to spell vsync
 			present_mode: wgpu::PresentMode::Fifo,
-			alpha_mode: surface_caps.alpha_modes[0],
+			alpha_mode: wgpu::CompositeAlphaMode::Opaque,
 			view_formats: vec![],
 		};
 
 		surface.configure(&device, &config);
 
-		let camera = Camera::new(&device, &config);
+		let smaa_target = smaa::SmaaTarget::new(
+			&device,
+			&queue,
+			window.inner_size().width,
+			window.inner_size().height,
+			surface_format,
+			smaa::SmaaMode::Smaa1X,
+		);
 
-		let mut rng = thread_rng();
-		let mut instances = Vec::new();
-
-		for _ in 0..500 {
-			let x = rng.sample::<f32, _>(rand_distr::StandardNormal) * 10.0;
-			let y = rng.sample::<f32, _>(rand_distr::StandardNormal) * 5.0;
-			let z = rng.sample::<f32, _>(rand_distr::StandardNormal) * 5.0;
-			let position = cgmath::Vector3 { x, y, z };
-			let scale = (rng.sample::<f32, _>(rand_distr::StandardNormal) * 0.3).exp() * 2.0;
-			let color = [rng.gen(), rng.gen(), rng.gen()];
-			instances.push(Instance {
-				position,
-				scale,
-				color,
-			});
-		}
-
-		let instance_data = instances.iter().map(Instance::to_raw).collect::<Vec<_>>();
-		let instance_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-			label: Some("Instance Buffer"),
-			contents: bytemuck::cast_slice(&instance_data),
-			usage: wgpu::BufferUsages::VERTEX,
-		});
-
-		log::warn!("Load model");
-		let sphere_mesh = load_mesh("sphere.obj", &device).unwrap();
+		let depth_texture = Texture::create_depth_texture(&device, &config, "depth_texture");
 
 		let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
 			label: Some("shader.wgsl"),
 			source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
 		});
 
-		let depth_texture = Texture::create_depth_texture(&device, &config, "depth_texture");
+		// setup
+		let camera = Camera::new(&device, &config);
+		let particles = Particles::new(&device);
+
+		// pipeline
+		let global_bind_group_layout =
+			device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+				entries: &[wgpu::BindGroupLayoutEntry {
+					binding: 0,
+					visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+					ty: wgpu::BindingType::Buffer {
+						ty: wgpu::BufferBindingType::Uniform,
+						has_dynamic_offset: false,
+						min_binding_size: None,
+					},
+					count: None,
+				}],
+				label: Some("global_bind_group_layout"),
+			});
+
+		let global_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+			layout: &global_bind_group_layout,
+			entries: &[wgpu::BindGroupEntry {
+				binding: 0,
+				resource: camera.buffer.as_entire_binding(),
+			}],
+			label: Some("global_bind_group"),
+		});
 
 		let render_pipeline_layout =
 			device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
 				label: Some("Render Pipeline Layout"),
-				bind_group_layouts: &[&camera.layout],
+				bind_group_layouts: &[&global_bind_group_layout],
 				push_constant_ranges: &[],
 			});
 
@@ -130,7 +131,7 @@ impl State {
 			vertex: wgpu::VertexState {
 				module: &shader,
 				entry_point: "vs_main",
-				buffers: &[MeshVertex::desc(), InstanceRaw::desc()],
+				buffers: &[MeshVertex::LAYOUT, ParticleRaw::LAYOUT],
 			},
 			fragment: Some(wgpu::FragmentState {
 				module: &shader,
@@ -149,12 +150,8 @@ impl State {
 				strip_index_format: None,
 				front_face: wgpu::FrontFace::Ccw,
 				cull_mode: Some(wgpu::Face::Back),
-				// Setting this to anything other than Fill requires Features::POLYGON_MODE_LINE
-				// or Features::POLYGON_MODE_POINT
 				polygon_mode: wgpu::PolygonMode::Fill,
-				// Requires Features::DEPTH_CLIP_CONTROL
 				unclipped_depth: false,
-				// Requires Features::CONSERVATIVE_RASTERIZATION
 				conservative: false,
 			},
 			depth_stencil: Some(wgpu::DepthStencilState {
@@ -172,29 +169,19 @@ impl State {
 			multiview: None,
 		});
 
-		let smaa_target = smaa::SmaaTarget::new(
-			&device,
-			&queue,
-			window.inner_size().width,
-			window.inner_size().height,
-			surface_format,
-			smaa::SmaaMode::Smaa1X,
-		);
-
 		Self {
+			window,
 			surface,
+			smaa_target,
+			depth_texture,
 			device,
 			queue,
 			config,
 			size,
+			global_bind_group,
 			render_pipeline,
-			sphere_mesh,
 			camera,
-			instances,
-			instance_buffer,
-			depth_texture,
-			window,
-			smaa_target,
+			particles,
 			timer: Instant::now(),
 		}
 	}
@@ -217,9 +204,6 @@ impl State {
 				.resize(&self.device, new_size.width, new_size.height);
 		}
 	}
-	pub fn input(&mut self, event: &WindowEvent) -> bool {
-		self.camera.process_events(event)
-	}
 
 	pub fn update(&mut self) {
 		self.camera.update(&self.queue);
@@ -241,8 +225,6 @@ impl State {
 		let smaa_frame = self
 			.smaa_target
 			.start_frame(&self.device, &self.queue, &view);
-
-		// let smaa_frame = view;
 
 		let mut encoder = self
 			.device
@@ -276,21 +258,16 @@ impl State {
 				}),
 			});
 
-			render_pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
-			render_pass.set_pipeline(&self.render_pipeline);
-			render_pass.draw_mesh_instanced(
-				&self.sphere_mesh,
-				0..self.instances.len() as u32,
-				&self.camera.bind_group,
+			self.particles.draw(
+				&mut render_pass,
+				&self.render_pipeline,
+				&self.global_bind_group,
 			);
 		}
 
 		self.queue.submit(iter::once(encoder.finish()));
-
 		smaa_frame.resolve();
-
 		output.present();
-
 		Ok(())
 	}
 }
