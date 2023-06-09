@@ -13,7 +13,7 @@ pub const OPENGL_TO_WGPU_MATRIX: cgmath::Matrix4<f32> = cgmath::Matrix4::new(
 
 #[repr(C)]
 #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct CameraMatrix([[f32; 4]; 4]);
+pub struct Matrix4([[f32; 4]; 4]);
 
 pub struct Camera {
 	// eye: cgmath::Point3<f32>,
@@ -33,7 +33,7 @@ impl Camera {
 	pub fn new(device: &wgpu::Device, config: &wgpu::SurfaceConfiguration) -> Self {
 		let buffer = device.create_buffer(&wgpu::BufferDescriptor {
 			label: Some("Camera Buffer"),
-			size: std::mem::size_of::<CameraMatrix>() as u64,
+			size: std::mem::size_of::<Matrix4>() as u64,
 			usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
 			mapped_at_creation: false,
 		});
@@ -60,10 +60,10 @@ impl Camera {
 		cgmath::Point3::new(px, py, pz)
 	}
 
-	fn get_matrix(&self) -> CameraMatrix {
+	fn get_matrix(&self) -> Matrix4 {
 		let view = cgmath::Matrix4::look_at_rh(self.eye(), self.target, self.up);
 		let proj = cgmath::perspective(cgmath::Deg(self.fovy), self.aspect, self.znear, self.zfar);
-		CameraMatrix((OPENGL_TO_WGPU_MATRIX * proj * view).into())
+		Matrix4((OPENGL_TO_WGPU_MATRIX * proj * view).into())
 	}
 
 	pub fn set_aspect(&mut self, aspect: f32) {

@@ -1,5 +1,5 @@
 use crate::camera::Camera;
-use crate::mesh::MeshVertex;
+use crate::mesh::Vertex;
 use crate::particle::{ParticleRaw, Particles};
 use crate::texture::Texture;
 use std::iter;
@@ -26,23 +26,26 @@ impl State {
 	pub async fn new(window: Window) -> Self {
 		let size = window.inner_size();
 
-		log::warn!("WGPU setup");
 		let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
-			backends: wgpu::Backends::all(),
-			dx12_shader_compiler: Default::default(),
+			// backends: wgpu::Backends::all(),
+			// backends: wgpu::Backends::DX12,
+			backends: wgpu::Backends::VULKAN,
+			dx12_shader_compiler: wgpu::Dx12Compiler::default(),
 		});
 
 		let surface = unsafe { instance.create_surface(&window) }.unwrap();
 
 		let adapter = instance
 			.request_adapter(&wgpu::RequestAdapterOptions {
-				power_preference: wgpu::PowerPreference::default(),
+				// power_preference: wgpu::PowerPreference::default(),
+				power_preference: wgpu::PowerPreference::HighPerformance,
 				compatible_surface: Some(&surface),
 				force_fallback_adapter: false,
 			})
 			.await
 			.unwrap();
-		log::warn!("device and queue");
+
+		println!("Selected adapter: {:?}", adapter.get_info());
 		let (device, queue) = adapter
 			.request_device(
 				&wgpu::DeviceDescriptor {
@@ -55,10 +58,19 @@ impl State {
 			.await
 			.unwrap();
 
-		log::warn!("Surface");
 		// let surface_caps = surface.get_capabilities(&adapter);
+		dbg!(surface.get_capabilities(&adapter));
 
-		let surface_format = wgpu::TextureFormat::Rgba8UnormSrgb;
+		// for f in surface.get_capabilities(&adapter).formats.iter() {
+		// 	dbg!(f);
+		// 	let srgb = f.is_srgb();
+		// 	dbg!(srgb);
+		// }
+
+		// let surface_format = wgpu::TextureFormat::Rgba8UnormSrgb;
+		// let surface_format = wgpu::TextureFormat::Rgba8Unorm;
+		let surface_format = wgpu::TextureFormat::Bgra8UnormSrgb;
+		// let surface_format = surface.get_capabilities(&adapter).formats[0];
 
 		let config = wgpu::SurfaceConfiguration {
 			usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
@@ -67,6 +79,8 @@ impl State {
 			height: size.height,
 			// Fifo is a strange way to spell vsync
 			present_mode: wgpu::PresentMode::Fifo,
+			// present_mode: wgpu::PresentMode::Mailbox,
+			// present_mode: wgpu::PresentMode::Immediate,
 			alpha_mode: wgpu::CompositeAlphaMode::Opaque,
 			view_formats: vec![],
 		};
@@ -131,7 +145,7 @@ impl State {
 			vertex: wgpu::VertexState {
 				module: &shader,
 				entry_point: "vs_main",
-				buffers: &[MeshVertex::LAYOUT, ParticleRaw::LAYOUT],
+				buffers: &[Vertex::LAYOUT, ParticleRaw::LAYOUT],
 			},
 			fragment: Some(wgpu::FragmentState {
 				module: &shader,
@@ -210,10 +224,10 @@ impl State {
 	}
 
 	pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
-		// println!(
-		//     "{:.1}",
-		//     1_000_000.0 / self.timer.elapsed().as_micros() as f64
-		// );
+		println!(
+			"{:.1}",
+			1_000_000.0 / self.timer.elapsed().as_micros() as f64
+		);
 
 		self.timer = Instant::now();
 
@@ -240,9 +254,10 @@ impl State {
 					resolve_target: None,
 					ops: wgpu::Operations {
 						load: wgpu::LoadOp::Clear(wgpu::Color {
-							r: 0.1,
-							g: 0.2,
-							b: 0.3,
+							// these are linear
+							r: 0.006,
+							g: 0.02,
+							b: 0.05,
 							a: 1.0,
 						}),
 						store: true,
@@ -268,6 +283,7 @@ impl State {
 		self.queue.submit(iter::once(encoder.finish()));
 		smaa_frame.resolve();
 		output.present();
+
 		Ok(())
 	}
 }

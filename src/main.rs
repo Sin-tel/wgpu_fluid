@@ -1,3 +1,8 @@
+// #![deny(clippy::pedantic)]
+// #![allow(clippy::cast_precision_loss)]
+// #![allow(clippy::cast_possible_truncation)]
+// #![allow(clippy::wildcard_imports)]
+
 use winit::{
 	event::*,
 	event_loop::{ControlFlow, EventLoop},
@@ -27,6 +32,7 @@ pub async fn run() {
 
 	let mut state = State::new(window).await;
 
+	// todo: factor this out
 	let mut mouse_pos: cgmath::Point2<f32> = cgmath::Point2::new(0.0, 0.0);
 	let mut mouse_down_left = false;
 	let mut mouse_down_right = false;
@@ -81,7 +87,7 @@ pub async fn run() {
 						MouseButton::Left => mouse_down_left = is_down,
 						MouseButton::Right => mouse_down_right = is_down,
 						MouseButton::Middle => mouse_down_middle = is_down,
-						_ => (),
+						MouseButton::Other(_) => (),
 					}
 				}
 				WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
@@ -99,6 +105,7 @@ pub async fn run() {
 					Ok(_) => {}
 					// Reconfigure the surface if it's lost or outdated
 					Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {
+						log::warn!("surface lost or outdated")
 						// state.resize(state.size)
 					}
 					// The system is out of memory, we should probably quit

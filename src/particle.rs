@@ -10,17 +10,17 @@ pub struct Particles {
 
 impl Particles {
 	pub fn new(device: &wgpu::Device) -> Self {
-		let mesh = Mesh::load("sphere.obj", &device).unwrap();
+		let mesh = Mesh::load("sphere.obj", device).unwrap();
 
 		let mut rng = thread_rng();
 		let mut list = Vec::new();
 
-		for _ in 0..500 {
+		for _ in 0..5_000 {
 			let x = rng.sample::<f32, _>(rand_distr::StandardNormal) * 10.0;
 			let y = rng.sample::<f32, _>(rand_distr::StandardNormal) * 5.0;
 			let z = rng.sample::<f32, _>(rand_distr::StandardNormal) * 5.0;
 			let position = cgmath::Vector3 { x, y, z };
-			let scale = (rng.sample::<f32, _>(rand_distr::StandardNormal) * 0.1).exp() * 1.0;
+			let scale = (rng.sample::<f32, _>(rand_distr::StandardNormal) * 0.1).exp() * 0.5;
 			let color = [rng.gen(), rng.gen(), rng.gen()];
 			list.push(Particle {
 				position,
@@ -48,7 +48,7 @@ impl Particles {
 		render_pass.set_vertex_buffer(1, self.buffer.slice(..));
 		render_pass.set_pipeline(render_pipeline);
 		self.mesh
-			.draw_instanced(render_pass, 0..self.list.len() as u32, &global_bind_group);
+			.draw_instanced(render_pass, 0..self.list.len() as u32, global_bind_group);
 	}
 }
 

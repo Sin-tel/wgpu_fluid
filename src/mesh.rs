@@ -3,14 +3,14 @@ use wgpu::util::DeviceExt;
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct MeshVertex {
+pub struct Vertex {
 	pub position: [f32; 3],
 	pub normal: [f32; 3],
 }
 
-impl MeshVertex {
+impl Vertex {
 	pub const LAYOUT: wgpu::VertexBufferLayout<'static> = wgpu::VertexBufferLayout {
-		array_stride: std::mem::size_of::<MeshVertex>() as wgpu::BufferAddress,
+		array_stride: std::mem::size_of::<Vertex>() as wgpu::BufferAddress,
 		step_mode: wgpu::VertexStepMode::Vertex,
 		attributes: &wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3],
 	};
@@ -30,14 +30,13 @@ impl Mesh {
 			.join(file_name);
 
 		let (mut models, _) = tobj::load_obj(
-			&path,
+			path,
 			&tobj::LoadOptions {
 				triangulate: true,
 				single_index: true,
 				..Default::default()
 			},
-		)
-		.expect("Failed to OBJ load file");
+		)?;
 
 		// we only need one mesh
 		assert!(models.len() == 1);
@@ -45,7 +44,7 @@ impl Mesh {
 		let mesh = models.remove(0).mesh;
 
 		let vertices = (0..mesh.positions.len() / 3)
-			.map(|i| MeshVertex {
+			.map(|i| Vertex {
 				position: [
 					mesh.positions[i * 3],
 					mesh.positions[i * 3 + 1],
@@ -60,12 +59,12 @@ impl Mesh {
 			.collect::<Vec<_>>();
 
 		let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-			label: Some(&format!("{:?} Vertex Buffer", file_name)),
+			label: Some(&format!("{file_name} Vertex Buffer")),
 			contents: bytemuck::cast_slice(&vertices),
 			usage: wgpu::BufferUsages::VERTEX,
 		});
 		let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-			label: Some(&format!("{:?} Index Buffer", file_name)),
+			label: Some(&format!("{file_name} Index Buffer")),
 			contents: bytemuck::cast_slice(&mesh.indices),
 			usage: wgpu::BufferUsages::INDEX,
 		});
@@ -73,7 +72,7 @@ impl Mesh {
 		Ok(Mesh {
 			vertex_buffer,
 			index_buffer,
-			num_elements: mesh.indices.len() as u32,
+			num_elements: u32::try_from(mesh.indices.len())?,
 		})
 	}
 

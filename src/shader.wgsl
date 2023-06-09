@@ -1,5 +1,8 @@
 // Vertex shader
 
+fn hash3(n: f32 ) -> vec3<f32> { return fract(sin(vec3(n,n+1.0,n+2.0))*43758.5453123); }
+
+
 struct Camera {
 	view_proj: mat4x4<f32>,
 }
@@ -63,9 +66,11 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 	lighting += sky * vec3(0.16, 0.20, 0.28);
 	lighting += ind * vec3(0.60, 0.42, 0.32);
 
-	let comp = lighting * max(vec3(0.05), in.color);
+	var comp = lighting * max(vec3(0.05), in.color) ;
 
-	// smoothstep(vec3(-0.1), vec3(1.5), comp)
+	// quick tonemapping
+	// should not be here actually
+	comp = smoothstep(vec3(-0.05), vec3(1.3), comp);
 
 	return vec4(comp, 1.0);
 }
