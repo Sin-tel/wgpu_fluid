@@ -5,6 +5,7 @@
 
 use winit::{
 	dpi::LogicalPosition,
+	dpi::LogicalSize,
 	event::*,
 	event_loop::{ControlFlow, EventLoop},
 };
@@ -29,6 +30,7 @@ pub async fn run() {
 	let window = winit::window::WindowBuilder::new()
 		.with_title(title)
 		.with_position(LogicalPosition::new(400.0, 200.0))
+		.with_inner_size(LogicalSize::new(1280.0, 720.0))
 		.build(&event_loop)
 		.unwrap();
 
@@ -78,6 +80,7 @@ pub async fn run() {
 				} => match key {
 					VirtualKeyCode::Escape => *control_flow = ControlFlow::Exit,
 					VirtualKeyCode::R => state.camera.look_at_origin(),
+					VirtualKeyCode::D => state.particles.divide(),
 					_ => (),
 				},
 				WindowEvent::MouseInput { state, button, .. } => {

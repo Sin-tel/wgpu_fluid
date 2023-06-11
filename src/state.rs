@@ -18,7 +18,7 @@ pub struct State {
 	global_bind_group: wgpu::BindGroup,
 	render_pipeline: wgpu::RenderPipeline,
 	pub camera: Camera,
-	particles: Particles,
+	pub particles: Particles,
 	timer: Instant,
 }
 
@@ -106,7 +106,11 @@ impl State {
 
 		// setup
 		let camera = Camera::new(&device, &config);
-		let particles = Particles::new(&device);
+		let mut particles = Particles::new(&device);
+
+		for _ in 0..30 {
+			particles.relax();
+		}
 
 		// pipeline
 		let global_bind_group_layout =
