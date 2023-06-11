@@ -4,6 +4,7 @@
 // #![allow(clippy::wildcard_imports)]
 
 use winit::{
+	dpi::LogicalPosition,
 	event::*,
 	event_loop::{ControlFlow, EventLoop},
 };
@@ -27,6 +28,7 @@ pub async fn run() {
 	let title = env!("CARGO_PKG_NAME");
 	let window = winit::window::WindowBuilder::new()
 		.with_title(title)
+		.with_position(LogicalPosition::new(400.0, 200.0))
 		.build(&event_loop)
 		.unwrap();
 

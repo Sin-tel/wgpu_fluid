@@ -45,7 +45,8 @@ impl State {
 			.await
 			.unwrap();
 
-		println!("Selected adapter: {:?}", adapter.get_info());
+		// println!("Selected adapter: {:?}", adapter.get_info());
+
 		let (device, queue) = adapter
 			.request_device(
 				&wgpu::DeviceDescriptor {
@@ -59,7 +60,7 @@ impl State {
 			.unwrap();
 
 		// let surface_caps = surface.get_capabilities(&adapter);
-		dbg!(surface.get_capabilities(&adapter));
+		// dbg!(surface.get_capabilities(&adapter));
 
 		// for f in surface.get_capabilities(&adapter).formats.iter() {
 		// 	dbg!(f);
@@ -78,8 +79,8 @@ impl State {
 			width: size.width,
 			height: size.height,
 			// Fifo is a strange way to spell vsync
-			present_mode: wgpu::PresentMode::Fifo,
-			// present_mode: wgpu::PresentMode::Mailbox,
+			// present_mode: wgpu::PresentMode::Fifo,
+			present_mode: wgpu::PresentMode::Mailbox,
 			// present_mode: wgpu::PresentMode::Immediate,
 			alpha_mode: wgpu::CompositeAlphaMode::Opaque,
 			view_formats: vec![],
@@ -220,14 +221,15 @@ impl State {
 	}
 
 	pub fn update(&mut self) {
+		self.particles.update(&self.queue);
 		self.camera.update(&self.queue);
 	}
 
 	pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
-		println!(
-			"{:.1}",
-			1_000_000.0 / self.timer.elapsed().as_micros() as f64
-		);
+		// println!(
+		// 	"{:.1}",
+		// 	1_000_000.0 / self.timer.elapsed().as_micros() as f64
+		// );
 
 		self.timer = Instant::now();
 
