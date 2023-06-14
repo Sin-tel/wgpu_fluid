@@ -17,6 +17,6 @@ rand_distr = "0.4"
 wgpu = {version = "0.16" }
 # wgpu = {version = "0.16", features = ["vulkan-portability", "angle"] }
 # update once merged: https://github.com/fintelia/smaa-rs/pull/10
-smaa = {git = "https://github.com/bschwind/smaa-rs.git", branch = "update-deps"}
-# smaa = "0.9"
-arcball = "1.1"
+# smaa = {git = "https://github.com/bschwind/smaa-rs.git", branch = "update-deps"}
+smaa = "0.10"
+# arcball = "1.1"
