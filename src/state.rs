@@ -106,7 +106,9 @@ impl State {
 
 		// setup
 		let camera = Camera::new(&device, &config);
-		let particles = Particles::new(&device);
+		let mut particles = Particles::new(&device);
+
+		particles.relax();
 
 		// pipeline
 		let global_bind_group_layout =

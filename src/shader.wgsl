@@ -42,7 +42,7 @@ fn vs_main(
 	);
 	var out: VertexOutput;
 	out.clip_position = camera.view_proj * model_matrix * vec4<f32>(model.position, 1.0);
-	out.normal = model.normal;
+	out.normal = normalize((model_matrix * vec4<f32>(model.normal, 0.0)).xyz);
 	out.color = instance.color;
 	return out;
 }
