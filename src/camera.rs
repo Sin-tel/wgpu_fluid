@@ -41,13 +41,13 @@ impl Camera {
 		Camera {
 			yaw: 0.0,
 			pitch: 0.0,
-			dist: 300.0,
+			dist: 3.0,
 			target: (0.0, 0.0, 0.0).into(),
 			up: cgmath::Vector3::unit_y(),
 			aspect: config.width as f32 / config.height as f32,
 			fovy: 45.0,
 			znear: 0.1,
-			zfar: 2000.0,
+			zfar: 200.0,
 			buffer,
 		}
 	}

@@ -7,11 +7,12 @@ use std::f32::consts::PI;
 const TWO_PI: f32 = std::f32::consts::TAU;
 
 const MAX_PARTICLES: usize = 5_000;
-const DT: f32 = 0.5;
-const REST_DENSITY: f32 = 0.0003;
-const GAS_CONST: f32 = 50.0;
+const DT: f32 = 0.00005;
+const REST_DENSITY: f32 = 0.9;
+const GAS_CONST: f32 = 0.0003;
+const FRICTION: f32 = 0.000001;
 
-const DIV_LENGTH: f32 = 0.8;
+const DIV_LENGTH: f32 = 0.7;
 
 fn random_axis() -> Vector3<f32> {
 	let mut rng = thread_rng();
@@ -25,16 +26,18 @@ fn random_axis() -> Vector3<f32> {
 	(x, y, z).into()
 }
 
+// we take density = 1.0
 fn mass_to_radius(m: f32) -> f32 {
-	16.0 * (3.0 * m / (4.0 * PI)).powf(1.0 / 3.0)
+	(3.0 * m / (4.0 * PI)).powf(1.0 / 3.0)
 }
 
-// (h^2 - r^2)^3
 fn w_poly6(r_squared: f32, h: f32) -> f32 {
 	(315.0 / (64.0 * PI * h.powi(9))) * (h.powi(2) - r_squared).powi(3)
 }
 
-// fn w_poly6_grad(r_squared: f32) -> f32 {}
+// fn w_poly6_grad(r_squared: f32, h: f32) -> f32 {
+// 	(945.0 / (32.0 * PI * h.powi(9))) * r_squared.sqrt() * (h.powi(2) - r_squared).powi(2)
+// }
 
 fn w_spiky_grad(r_squared: f32, h: f32) -> f32 {
 	(45.0 / (PI * h.powi(6))) * (h - r_squared.sqrt()).powi(2)
@@ -66,7 +69,7 @@ impl Particles {
 			// let mass: f32 = (rng.sample::<f32, _>(rand_distr::StandardNormal) * 0.5).exp() * 500.0;
 
 			let position = Vector3::zero();
-			let mass = 500.0;
+			let mass = 1.0;
 			list.push(Particle::new(position, mass, [0.5, 0.5, 0.5]));
 		}
 
@@ -81,25 +84,28 @@ impl Particles {
 	}
 
 	pub fn update(&mut self, queue: &wgpu::Queue) {
-		self.divide();
-		self.update_pressure();
-		self.update_forces();
-		self.list.iter_mut().for_each(|p| p.integrate());
-		// self.list.iter_mut().for_each(|p| p.relax());
+		for _ in 0..10 {
+			self.divide();
+			self.update_pressure();
+			self.update_forces();
+			self.list.iter_mut().for_each(|p| p.integrate());
+		}
 		self.update_buffer(queue);
 	}
 
 	pub fn divide(&mut self) {
 		let mut rng = thread_rng();
 
-		self.list.iter_mut().for_each(|p| p.age += rng.gen::<f32>());
+		self.list
+			.iter_mut()
+			.for_each(|p| p.age += 0.05 * rng.gen::<f32>());
 
 		let n = self.list.len();
 		let index = rng.gen_range(0..n);
 
-		self.list[index].age += 1.0;
+		self.list[index].age += 0.05;
 
-		if self.list[index].age > 2000.0 && n < 500 {
+		if self.list[index].age > 1000.0 && n < 500 {
 			println!("{:?}", n);
 			let p = self.list[index].position;
 			let axis = 0.5 * DIV_LENGTH * self.list[index].radius * random_axis();
@@ -118,6 +124,7 @@ impl Particles {
 			self.list[index].age = 0.0;
 			self.list[index].set_mass(mass_div * m);
 			self.list[index].position = p + axis;
+			self.list[index].color = newcol;
 			self.list
 				.push(Particle::new(p - axis, (1.0 - mass_div) * m, newcol));
 		}
@@ -152,7 +159,8 @@ impl Particles {
 				}
 			}
 			self.list[i].density = density;
-			self.list[i].pressure = GAS_CONST * (density - REST_DENSITY)
+			self.list[i].pressure = GAS_CONST * (density - REST_DENSITY).powi(7)
+			// self.list[i].pressure = GAS_CONST * (density - REST_DENSITY)
 		}
 	}
 
@@ -164,7 +172,8 @@ impl Particles {
 		for i in 0..n {
 			let p_i = self.list[i];
 			let mut f_press = Vector3::zero();
-			let mut f_visc = Vector3::zero();
+			// let mut f_visc = Vector3::zero();
+			// let mut f_hooke = Vector3::zero();
 			for j in 0..n {
 				if i == j {
 					continue;
@@ -183,13 +192,19 @@ impl Particles {
 						* w_spiky_grad(r_sq, r_sum)
 						/ (2.0 * p_j.density);
 
-					f_visc += 0.02 * p_j.mass * (p_j.velocity - p_i.velocity) * w_visc(r_sq, r_sum)
-						/ (p_j.density);
+					// f_visc += 0.01 * p_j.mass * (p_j.velocity - p_i.velocity) * w_visc(r_sq, r_sum)
+					// 	/ (p_j.density);
 
-					// f_visc += 0.001
+					// f_visc += 0.2
 					// 	* p_j.mass * r_ij.normalize()
 					// 	* (p_j.velocity - p_i.velocity).dot(r_ij)
-					// 	* w_visc(r_sq, r_sum) / (p_j.density * r_sq + 0.01 * (r_sum.powi(2)));
+					// 	* w_spiky_grad(r_sq, r_sum)
+					// 	/ (p_j.density * r_sq + 0.00001 * (r_sum.powi(2)));
+
+					// f_hooke += 0.000001
+					// 	* p_j.mass * r_ij.normalize()
+					// 	* (r_sq.sqrt() - r_sum) * w_poly6(r_sq, r_sum)
+					// 	/ p_j.density;
 				}
 			}
 
@@ -199,18 +214,15 @@ impl Particles {
 			// let f_brownian = 0.000001 * Vector3 { x, y, z };
 
 			let p = p_i.position;
-			let f_well = -0.0000005
+			let f_well = -0.00001
 				* Vector3 {
 					x: p.x * 0.3,
 					y: p.y,
 					z: p.z,
 				};
 
-			let f_friction = -0.00001 * p_i.velocity;
-
 			{
-				self.list[i].force += f_press + f_visc + f_well + f_friction;
-				// + f_brownian
+				self.list[i].force += f_press + f_well;
 			}
 		}
 	}
@@ -236,7 +248,6 @@ impl Particles {
 #[derive(Debug, Copy, Clone)]
 pub struct Particle {
 	position: Vector3<f32>,
-	velocity: Vector3<f32>,
 	force: Vector3<f32>,
 	radius: f32,
 	mass: f32,
@@ -260,7 +271,6 @@ impl Particle {
 
 		Particle {
 			position,
-			velocity: Vector3::zero(),
 			force: Vector3::zero(),
 			radius,
 			mass,
@@ -279,20 +289,23 @@ impl Particle {
 	}
 
 	pub fn integrate(&mut self) {
-		self.velocity += (self.force / self.density) * DT;
-		self.position += self.velocity * DT;
+		// self.velocity += (self.force / self.density) * DT;
+		// self.position += self.velocity * DT;
+		self.position += DT * self.force / FRICTION;
 		self.force = Vector3::zero();
 	}
 
 	pub fn relax(&mut self) {
-		self.position += (self.force / self.density) * 0.5;
+		// self.position += (self.force / self.density) * 0.5;
+		self.position += self.force * 100000.0;
 		self.force = Vector3::zero();
 	}
 
 	pub fn to_raw(&self) -> ParticleRaw {
 		ParticleRaw {
-			model: (Matrix4::from_translation(self.position) * Matrix4::from_scale(self.radius))
-				.into(),
+			model: (Matrix4::from_translation(self.position)
+				* Matrix4::from_scale(self.radius * 1.0))
+			.into(),
 			color: self.color,
 		}
 	}
