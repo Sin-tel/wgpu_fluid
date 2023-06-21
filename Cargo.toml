@@ -14,9 +14,7 @@ tobj = "3.2"
 winit = "0.27"
 rand = "0.8"
 rand_distr = "0.4"
-wgpu = {version = "0.16" }
-# wgpu = {version = "0.16", features = ["vulkan-portability", "angle"] }
-# update once merged: https://github.com/fintelia/smaa-rs/pull/10
-# smaa = {git = "https://github.com/bschwind/smaa-rs.git", branch = "update-deps"}
+wgpu = "0.16"
 smaa = "0.10"
-# arcball = "1.1"
+ndarray = "0.15"
+ndarray-linalg = "0.16"
