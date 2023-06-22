@@ -16,5 +16,6 @@ rand = "0.8"
 rand_distr = "0.4"
 wgpu = "0.16"
 smaa = "0.10"
-ndarray = "0.15"
-ndarray-linalg = "0.16"
+# ndarray = "0.15"
+# ndarray-linalg = {version = "0.16", features = ["intel-mkl-system"]}
+nalgebra = "0.32"

@@ -1,18 +1,24 @@
 use crate::mesh::Mesh;
 use cgmath::prelude::*;
 use cgmath::{Matrix4, Vector3};
+use nalgebra::{DMatrix, Dyn, OMatrix, U3};
 use rand::{thread_rng, Rng};
+use std::iter::zip;
 
 use std::f32::consts::PI;
 const TWO_PI: f32 = std::f32::consts::TAU;
 
 const MAX_PARTICLES: usize = 5_000;
-const DT: f32 = 0.00005;
-const REST_DENSITY: f32 = 0.9;
+const DT: f32 = 0.5;
+const REST_DENSITY: f32 = 1.2;
 const GAS_CONST: f32 = 0.0003;
-const FRICTION: f32 = 0.000001;
-
+const FRICTION: f32 = 0.00001;
+const VISCOSITY: f32 = 0.0001;
+// const FRICTION: f32 = 0.01;
+// const VISCOSITY: f32 = 0.;
 const DIV_LENGTH: f32 = 0.7;
+
+type MatrixNx3 = OMatrix<f32, Dyn, U3>;
 
 fn random_axis() -> Vector3<f32> {
 	let mut rng = thread_rng();
@@ -105,7 +111,7 @@ impl Particles {
 
 		self.list[index].age += 0.05;
 
-		if self.list[index].age > 1000.0 && n < 500 {
+		if (self.list[index].age > 1000.0 && n < 200) || n == 1 {
 			println!("{:?}", n);
 			let p = self.list[index].position;
 			let axis = 0.5 * DIV_LENGTH * self.list[index].radius * random_axis();
@@ -118,24 +124,19 @@ impl Particles {
 			newcol[1] += rng.gen_range(-0.1..0.1);
 			newcol[2] += rng.gen_range(-0.1..0.1);
 
-			// println!("{:?}", newcol);
-
 			let m = self.list[index].mass;
-			self.list[index].age = 0.0;
-			self.list[index].set_mass(mass_div * m);
-			self.list[index].position = p + axis;
-			self.list[index].color = newcol;
+
+			self.list[index] = Particle::new(p + axis, mass_div * m, newcol);
 			self.list
 				.push(Particle::new(p - axis, (1.0 - mass_div) * m, newcol));
 		}
 	}
 
-	pub fn relax(&mut self) {
-		self.update_pressure();
-		self.update_forces();
-		self.list.iter_mut().for_each(|p| p.relax());
-		// self.update_buffer(queue);
-	}
+	// pub fn relax(&mut self) {
+	// 	self.update_pressure();
+	// 	self.update_forces();
+	// 	self.list.iter_mut().for_each(|p| p.relax());
+	// }
 
 	pub fn update_pressure(&mut self) {
 		let n = self.list.len();
@@ -159,21 +160,23 @@ impl Particles {
 				}
 			}
 			self.list[i].density = density;
-			self.list[i].pressure = GAS_CONST * (density - REST_DENSITY).powi(7)
-			// self.list[i].pressure = GAS_CONST * (density - REST_DENSITY)
+			// self.list[i].pressure = GAS_CONST * (density - REST_DENSITY).powi(3)
+			self.list[i].pressure = GAS_CONST * (density - REST_DENSITY)
 		}
 	}
 
 	pub fn update_forces(&mut self) {
+		let n = self.list.len();
 		// let mut rng = thread_rng();
 
-		let n = self.list.len();
+		// friction matrix
+		let mut gamma = DMatrix::from_diagonal_element(n, n, FRICTION);
 
 		for i in 0..n {
 			let p_i = self.list[i];
 			let mut f_press = Vector3::zero();
-			// let mut f_visc = Vector3::zero();
 			// let mut f_hooke = Vector3::zero();
+			let mut visc_sum = 0.0;
 			for j in 0..n {
 				if i == j {
 					continue;
@@ -192,14 +195,9 @@ impl Particles {
 						* w_spiky_grad(r_sq, r_sum)
 						/ (2.0 * p_j.density);
 
-					// f_visc += 0.01 * p_j.mass * (p_j.velocity - p_i.velocity) * w_visc(r_sq, r_sum)
-					// 	/ (p_j.density);
-
-					// f_visc += 0.2
-					// 	* p_j.mass * r_ij.normalize()
-					// 	* (p_j.velocity - p_i.velocity).dot(r_ij)
-					// 	* w_spiky_grad(r_sq, r_sum)
-					// 	/ (p_j.density * r_sq + 0.00001 * (r_sum.powi(2)));
+					let visc = VISCOSITY * p_j.mass * w_visc(r_sq, r_sum) / p_j.density;
+					visc_sum += visc;
+					gamma[(i, j)] = -visc;
 
 					// f_hooke += 0.000001
 					// 	* p_j.mass * r_ij.normalize()
@@ -207,11 +205,7 @@ impl Particles {
 					// 	/ p_j.density;
 				}
 			}
-
-			// let x = rng.sample::<f32, _>(rand_distr::StandardNormal);
-			// let y = rng.sample::<f32, _>(rand_distr::StandardNormal);
-			// let z = rng.sample::<f32, _>(rand_distr::StandardNormal);
-			// let f_brownian = 0.000001 * Vector3 { x, y, z };
+			gamma[(i, i)] += visc_sum;
 
 			let p = p_i.position;
 			let f_well = -0.00001
@@ -221,14 +215,37 @@ impl Particles {
 					z: p.z,
 				};
 
-			{
-				self.list[i].force += f_press + f_well;
-			}
+			let f_polar = 0.000001 * p_i.polarization;
+
+			self.list[i].force += f_press + f_well + f_polar;
+		}
+
+		// build matrix of forces
+
+		// TODO: do some iterator magic here instead?
+		let mut res = Vec::with_capacity(3 * n);
+		for p in &self.list {
+			res.push(p.force.x);
+			res.push(p.force.y);
+			res.push(p.force.z);
+		}
+
+		let mut b = MatrixNx3::from_row_slice(&res);
+
+		gamma.lu().solve_mut(&mut b);
+
+		for (p, v) in zip(self.list.iter_mut(), b.row_iter()) {
+			// let x = rng.sample::<f32, _>(rand_distr::StandardNormal);
+			// let y = rng.sample::<f32, _>(rand_distr::StandardNormal);
+			// let z = rng.sample::<f32, _>(rand_distr::StandardNormal);
+			// let f_brownian = 0.001 * Vector3 { x, y, z };
+
+			p.force = Vector3::new(v[0], v[1], v[2]); // + f_brownian;
 		}
 	}
 
 	fn update_buffer(&mut self, queue: &wgpu::Queue) {
-		let instance_data = self.list.iter().map(Particle::to_raw).collect::<Vec<_>>();
+		let instance_data = self.list.iter().map(Particle::as_raw).collect::<Vec<_>>();
 		queue.write_buffer(&self.buffer, 0, bytemuck::cast_slice(&instance_data));
 	}
 
@@ -249,6 +266,7 @@ impl Particles {
 pub struct Particle {
 	position: Vector3<f32>,
 	force: Vector3<f32>,
+	polarization: Vector3<f32>,
 	radius: f32,
 	mass: f32,
 	density: f32,
@@ -264,6 +282,8 @@ impl Particle {
 
 		let radius = mass_to_radius(mass);
 
+		let polarization = random_axis();
+
 		// println!("{:?}", radius);
 
 		// let mut rng = thread_rng();
@@ -272,6 +292,7 @@ impl Particle {
 		Particle {
 			position,
 			force: Vector3::zero(),
+			polarization,
 			radius,
 			mass,
 			color,
@@ -281,27 +302,20 @@ impl Particle {
 		}
 	}
 
-	pub fn set_mass(&mut self, mass: f32) {
-		let radius = mass_to_radius(mass);
-
-		self.mass = mass;
-		self.radius = radius;
-	}
-
 	pub fn integrate(&mut self) {
 		// self.velocity += (self.force / self.density) * DT;
 		// self.position += self.velocity * DT;
-		self.position += DT * self.force / FRICTION;
+		self.position += DT * self.force;
 		self.force = Vector3::zero();
 	}
 
-	pub fn relax(&mut self) {
-		// self.position += (self.force / self.density) * 0.5;
-		self.position += self.force * 100000.0;
-		self.force = Vector3::zero();
-	}
+	// pub fn relax(&mut self) {
+	// 	// self.position += (self.force / self.density) * 0.5;
+	// 	self.position += self.force * 100000.0;
+	// 	self.force = Vector3::zero();
+	// }
 
-	pub fn to_raw(&self) -> ParticleRaw {
+	pub fn as_raw(&self) -> ParticleRaw {
 		ParticleRaw {
 			model: (Matrix4::from_translation(self.position)
 				* Matrix4::from_scale(self.radius * 1.0))
