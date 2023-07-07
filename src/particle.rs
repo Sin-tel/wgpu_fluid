@@ -4,19 +4,18 @@ use cgmath::{Matrix4, Vector3};
 use nalgebra::{DMatrix, Dyn, OMatrix, U3};
 use rand::{thread_rng, Rng};
 use std::iter::zip;
+// use std::time::Instant;
 
 use std::f32::consts::PI;
 const TWO_PI: f32 = std::f32::consts::TAU;
 
 const MAX_PARTICLES: usize = 5_000;
-const DT: f32 = 0.5;
-const REST_DENSITY: f32 = 1.2;
-const GAS_CONST: f32 = 0.0003;
-const FRICTION: f32 = 0.00001;
-const VISCOSITY: f32 = 0.0001;
-// const FRICTION: f32 = 0.01;
-// const VISCOSITY: f32 = 0.;
-const DIV_LENGTH: f32 = 0.7;
+const DT: f32 = 5.0;
+const REST_DENSITY: f32 = 1.0;
+const GAS_CONST: f32 = 0.003;
+const FRICTION: f32 = 0.01;
+const VISCOSITY: f32 = 0.01;
+const DIV_LENGTH: f32 = 0.3;
 
 type MatrixNx3 = OMatrix<f32, Dyn, U3>;
 
@@ -34,7 +33,7 @@ fn random_axis() -> Vector3<f32> {
 
 // we take density = 1.0
 fn mass_to_radius(m: f32) -> f32 {
-	(3.0 * m / (4.0 * PI)).powf(1.0 / 3.0)
+	1.0 * (3.0 * m / (4.0 * PI)).powf(1.0 / 3.0)
 }
 
 fn w_poly6(r_squared: f32, h: f32) -> f32 {
@@ -90,12 +89,21 @@ impl Particles {
 	}
 
 	pub fn update(&mut self, queue: &wgpu::Queue) {
+		// let now = Instant::now();
+
 		for _ in 0..10 {
 			self.divide();
 			self.update_pressure();
 			self.update_forces();
 			self.list.iter_mut().for_each(|p| p.integrate());
 		}
+		// let new_now = Instant::now();
+
+		// println!(
+		// 	"{:?}",
+		// 	new_now.duration_since(now).as_micros() as f64 / 10.0
+		// );
+
 		self.update_buffer(queue);
 	}
 
@@ -104,14 +112,14 @@ impl Particles {
 
 		self.list
 			.iter_mut()
-			.for_each(|p| p.age += 0.05 * rng.gen::<f32>());
+			.for_each(|p| p.age += 0.1 * rng.gen::<f32>());
 
 		let n = self.list.len();
 		let index = rng.gen_range(0..n);
 
-		self.list[index].age += 0.05;
+		// self.list[index].age += 0.1;
 
-		if (self.list[index].age > 1000.0 && n < 200) || n == 1 {
+		if (self.list[index].age > 100.0 && n < 300) || n == 1 {
 			println!("{:?}", n);
 			let p = self.list[index].position;
 			let axis = 0.5 * DIV_LENGTH * self.list[index].radius * random_axis();
@@ -199,25 +207,31 @@ impl Particles {
 					visc_sum += visc;
 					gamma[(i, j)] = -visc;
 
-					// f_hooke += 0.000001
+					// f_hooke += 0.01
 					// 	* p_j.mass * r_ij.normalize()
-					// 	* (r_sq.sqrt() - r_sum) * w_poly6(r_sq, r_sum)
-					// 	/ p_j.density;
+					// 	* (r_sq.sqrt() - r_sum * 0.5)
+					// 	* w_poly6(r_sq, r_sum) / p_j.density;
 				}
 			}
 			gamma[(i, i)] += visc_sum;
 
 			let p = p_i.position;
-			let f_well = -0.00001
-				* Vector3 {
-					x: p.x * 0.3,
-					y: p.y,
-					z: p.z,
-				};
+			let f_well = Vector3 {
+				x: p.x * 0.4,
+				y: p.y * 1.5,
+				z: p.z,
+			};
 
-			let f_polar = 0.000001 * p_i.polarization;
+			let f_well_norm = f_well.magnitude();
 
-			self.list[i].force += f_press + f_well + f_polar;
+			let f_well = -0.001 * (f_well.normalize()) * (f_well_norm - 0.15).max(0.0);
+
+			let f_polar = 0.00001 * p_i.polarization;
+
+			// println!("{f_well:?}",);
+			// println!("{:?}", (f_well_norm - 10.0).max(0.0));
+
+			self.list[i].force += f_press + f_well + f_polar /*+ f_hooke*/;
 		}
 
 		// build matrix of forces
@@ -238,9 +252,9 @@ impl Particles {
 			// let x = rng.sample::<f32, _>(rand_distr::StandardNormal);
 			// let y = rng.sample::<f32, _>(rand_distr::StandardNormal);
 			// let z = rng.sample::<f32, _>(rand_distr::StandardNormal);
-			// let f_brownian = 0.001 * Vector3 { x, y, z };
+			// let f_brownian = 0.0001 * Vector3 { x, y, z };
 
-			p.force = Vector3::new(v[0], v[1], v[2]); // + f_brownian;
+			p.force = Vector3::new(v[0], v[1], v[2]) /*+ f_brownian*/;
 		}
 	}
 

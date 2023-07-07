@@ -79,8 +79,8 @@ impl State {
 			width: size.width,
 			height: size.height,
 			// Fifo is a strange way to spell vsync
-			// present_mode: wgpu::PresentMode::Fifo,
-			present_mode: wgpu::PresentMode::Mailbox,
+			present_mode: wgpu::PresentMode::Fifo,
+			// present_mode: wgpu::PresentMode::Mailbox,
 			// present_mode: wgpu::PresentMode::Immediate,
 			alpha_mode: wgpu::CompositeAlphaMode::Opaque,
 			view_formats: vec![],
