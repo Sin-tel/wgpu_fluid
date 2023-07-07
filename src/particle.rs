@@ -10,7 +10,7 @@ const DT: f32 = 0.5;
 const H: f32 = 16.0;
 
 // const REST_DENSITY: f32 = 0.0;
-const REST_DENSITY: f32 = 0.003;
+const REST_DENSITY: f32 = 0.006; // 0.003
 const GAS_CONST: f32 = 2.0;
 
 use std::f32::consts::PI;
@@ -26,9 +26,9 @@ fn w_spiky_grad(r_squared: f32) -> f32 {
 	(45.0 / (PI * H.powi(6))) * (H - r_squared.sqrt()).powi(2)
 }
 
-fn w_visc(r_squared: f32) -> f32 {
-	(45.0 / (PI * H.powi(6))) * (H - r_squared.sqrt())
-}
+// fn w_visc(r_squared: f32) -> f32 {
+// 	(45.0 / (PI * H.powi(6))) * (H - r_squared.sqrt())
+// }
 
 // TODO: try struct of arrays perf
 pub struct Particles {
@@ -39,7 +39,7 @@ pub struct Particles {
 
 impl Particles {
 	pub fn new(device: &wgpu::Device) -> Self {
-		let mesh = Mesh::load("arrow.obj", device).unwrap();
+		let mesh = Mesh::load("capsule.obj", device).unwrap();
 
 		let mut rng = thread_rng();
 		let mut list = Vec::new();
@@ -48,15 +48,16 @@ impl Particles {
 			let x = rng.sample::<f32, _>(rand_distr::StandardNormal) * 20.0;
 			let y = rng.sample::<f32, _>(rand_distr::StandardNormal) * 20.0;
 			let z = rng.sample::<f32, _>(rand_distr::StandardNormal) * 20.0;
-			let position = Vector3 { x, y, z };
+			let position = Vector3 { x, y, z }.normalize() * 40.;
 			// let radius = (rng.sample::<f32, _>(rand_distr::StandardNormal) * 0.1).exp() * 0.5;
 			let radius = H / 10.0;
 			let color = [rng.gen(), 0.8, rng.gen()];
 
-			let x = rng.sample::<f32, _>(rand_distr::StandardNormal);
-			let y = rng.sample::<f32, _>(rand_distr::StandardNormal);
-			let z = rng.sample::<f32, _>(rand_distr::StandardNormal);
-			let normal = Vector3 { x, y, z }.normalize();
+			// let x = rng.sample::<f32, _>(rand_distr::StandardNormal);
+			// let y = rng.sample::<f32, _>(rand_distr::StandardNormal);
+			// let z = rng.sample::<f32, _>(rand_distr::StandardNormal);
+			let normal = position.normalize();
+
 			// let normal = position.normalize();
 			list.push(Particle {
 				position,
@@ -129,9 +130,12 @@ impl Particles {
 		for i in 0..n {
 			let p_i = self.list[i];
 			let mut f_press = Vector3::zero();
-			let mut f_dipole = Vector3::zero();
+			// let mut f_dipole = Vector3::zero();
 			// let mut f_visc = Vector3::zero();
 			let mut torque = Vector3::zero();
+			// weighted avg
+			let mut avg_pos = Vector3::zero();
+			let mut sum_weights: f32 = 0.0;
 			for j in 0..n {
 				if i == j {
 					continue;
@@ -143,40 +147,65 @@ impl Particles {
 				let r_sq = r_ij.magnitude2();
 
 				if r_sq < H.powi(2) {
+					let w = w_poly6(r_sq);
+					sum_weights += w;
+
+					avg_pos += w * p_j.position;
+
 					let r_n = r_ij.normalize();
 
 					let r_tan = r_n - (r_n.dot(p_i.normal)) * p_i.normal;
 
-					f_press += -r_tan
-						* p_j.mass * (p_i.pressure + p_j.pressure)
-						* w_spiky_grad(r_sq) / (2.0 * p_j.density);
+					// f_press += -r_tan
+					// 	* p_j.mass * (p_i.pressure + p_j.pressure)
+					// 	* w_spiky_grad(r_sq) / (2.0 * p_j.density);
 
-					// torque += -10.0
+					f_press += -r_n * p_j.mass * (p_i.pressure + p_j.pressure) * w_spiky_grad(r_sq)
+						/ (2.0 * p_j.density);
+
+					// torque += -0.01
 					// 	* w_poly6(r_sq) * (p_i.normal.cross(p_j.normal)
 					// 	- 3.0 * (p_j.normal.dot(r_ij) * p_i.normal.cross(r_ij) / r_sq));
 
-					torque += 2.0 * w_poly6(r_sq) * p_j.normal.cross(p_i.normal);
+					torque += 0.02 * w_poly6(r_sq) * p_j.normal.cross(p_i.normal);
 
 					// f_visc += 0.005 * p_j.mass * (p_j.velocity - p_i.velocity) * w_visc(r_sq)
 					// 	/ (p_j.density);
 
-					f_dipole += 0.3
-						* w_poly6(r_sq) * (r_n * p_i.normal.dot(p_j.normal)
-						+ p_i.normal * (r_n.dot(p_j.normal))
-						+ p_j.normal * (r_n.dot(p_i.normal))
-						- 5.0 * r_n * r_n.dot(p_i.normal) * r_n.dot(p_j.normal));
+					// f_dipole += 0.5
+					// 	* w_poly6(r_sq) * (r_n * p_i.normal.dot(p_j.normal)
+					// 	+ p_i.normal * (r_n.dot(p_j.normal))
+					// 	+ p_j.normal * (r_n.dot(p_i.normal))
+					// 	- 5.0 * r_n * r_n.dot(p_i.normal) * r_n.dot(p_j.normal));
+
 					// f_dipole +=
 					// 	10.0 * w_visc(r_sq) * r_n * r_n.dot(p_i.normal) * r_n.dot(p_j.normal);
 				}
 			}
 
-			let f_well = -0.000001 * p_i.position;
+			// check div by zero
+			let f_curv = if sum_weights > 1e-5 {
+				avg_pos = avg_pos / sum_weights;
 
-			let f_friction = -0.0001 * p_i.velocity;
+				let f = 0.0001 * (avg_pos - p_i.position);
 
-			let f_normal = 0.00001 * p_i.normal;
+				// project on normal
+				f.dot(p_i.normal) * p_i.normal
+			} else {
+				Vector3::zero()
+			};
 
-			self.list[i].force += f_press + f_well /*+ f_dipole*/ + f_friction + f_normal;
+			// let well_n = p_i.position.magnitude();
+			// let well_l = (well_n - 1.0).abs();
+			// let f_well = -0.0001 * p_i.position * well_l / well_n;
+
+			// let f_well = -0.000001 * p_i.position;
+
+			let f_friction = -0.001 * p_i.velocity;
+
+			let f_normal = 0.00003 * p_i.normal;
+
+			self.list[i].force += f_press /*+ f_well*/ + f_friction + f_normal + f_curv;
 			self.list[i].torque += torque;
 		}
 	}
