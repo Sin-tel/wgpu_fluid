@@ -17,3 +17,4 @@ rand_distr = "0.4"
 wgpu = {version = "0.16" }
 smaa = "0.10"
 arcball = "1.1"
+nalgebra = "0.32"

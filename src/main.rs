@@ -7,6 +7,7 @@ use winit::{
 	dpi::LogicalPosition,
 	event::*,
 	event_loop::{ControlFlow, EventLoop},
+	window::Fullscreen,
 };
 
 mod camera;
@@ -28,7 +29,8 @@ pub async fn run() {
 	let title = env!("CARGO_PKG_NAME");
 	let window = winit::window::WindowBuilder::new()
 		.with_title(title)
-		.with_position(LogicalPosition::new(400.0, 200.0))
+		// .with_position(LogicalPosition::new(400.0, 200.0))
+		.with_fullscreen(Some(Fullscreen::Borderless(None)))
 		.build(&event_loop)
 		.unwrap();
 

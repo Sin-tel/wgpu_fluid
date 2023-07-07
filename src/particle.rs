@@ -11,7 +11,7 @@ const H: f32 = 16.0;
 
 // const REST_DENSITY: f32 = 0.0;
 const REST_DENSITY: f32 = 0.006; // 0.003
-const GAS_CONST: f32 = 2.0;
+const GAS_CONST: f32 = 1.5;
 
 use std::f32::consts::PI;
 
@@ -39,26 +39,29 @@ pub struct Particles {
 
 impl Particles {
 	pub fn new(device: &wgpu::Device) -> Self {
-		let mesh = Mesh::load("capsule.obj", device).unwrap();
+		let mesh = Mesh::load("sphere.obj", device).unwrap();
 
 		let mut rng = thread_rng();
 		let mut list = Vec::new();
 
 		for _ in 0..MAX_PARTICLES {
-			let x = rng.sample::<f32, _>(rand_distr::StandardNormal) * 20.0;
-			let y = rng.sample::<f32, _>(rand_distr::StandardNormal) * 20.0;
-			let z = rng.sample::<f32, _>(rand_distr::StandardNormal) * 20.0;
-			let position = Vector3 { x, y, z }.normalize() * 40.;
+			let x = rng.sample::<f32, _>(rand_distr::StandardNormal);
+			let y = rng.sample::<f32, _>(rand_distr::StandardNormal);
+			let z = rng.sample::<f32, _>(rand_distr::StandardNormal);
+			let position = Vector3 { x, y, z }.normalize() * 60.;
+			// let position = 30. * Vector3 { x, y, z };
+
 			// let radius = (rng.sample::<f32, _>(rand_distr::StandardNormal) * 0.1).exp() * 0.5;
 			let radius = H / 10.0;
 			let color = [rng.gen(), 0.8, rng.gen()];
 
-			// let x = rng.sample::<f32, _>(rand_distr::StandardNormal);
-			// let y = rng.sample::<f32, _>(rand_distr::StandardNormal);
-			// let z = rng.sample::<f32, _>(rand_distr::StandardNormal);
-			let normal = position.normalize();
+			let x = rng.sample::<f32, _>(rand_distr::StandardNormal);
+			let y = rng.sample::<f32, _>(rand_distr::StandardNormal);
+			let z = rng.sample::<f32, _>(rand_distr::StandardNormal);
+			let normal = Vector3 { x, y, z }.normalize();
 
 			// let normal = position.normalize();
+
 			list.push(Particle {
 				position,
 				velocity: Vector3::zero(),
@@ -154,8 +157,7 @@ impl Particles {
 
 					let r_n = r_ij.normalize();
 
-					let r_tan = r_n - (r_n.dot(p_i.normal)) * p_i.normal;
-
+					// let r_tan = r_n - (r_n.dot(p_i.normal)) * p_i.normal;
 					// f_press += -r_tan
 					// 	* p_j.mass * (p_i.pressure + p_j.pressure)
 					// 	* w_spiky_grad(r_sq) / (2.0 * p_j.density);
@@ -167,7 +169,7 @@ impl Particles {
 					// 	* w_poly6(r_sq) * (p_i.normal.cross(p_j.normal)
 					// 	- 3.0 * (p_j.normal.dot(r_ij) * p_i.normal.cross(r_ij) / r_sq));
 
-					torque += 0.02 * w_poly6(r_sq) * p_j.normal.cross(p_i.normal);
+					torque += 0.5 * w_poly6(r_sq) * p_j.normal.cross(p_i.normal);
 
 					// f_visc += 0.005 * p_j.mass * (p_j.velocity - p_i.velocity) * w_visc(r_sq)
 					// 	/ (p_j.density);
@@ -187,7 +189,9 @@ impl Particles {
 			let f_curv = if sum_weights > 1e-5 {
 				avg_pos = avg_pos / sum_weights;
 
-				let f = 0.0001 * (avg_pos - p_i.position);
+				let f = 0.0002 * (avg_pos - p_i.position);
+
+				torque -= 0.00005 * (avg_pos - p_i.position).cross(p_i.normal);
 
 				// project on normal
 				f.dot(p_i.normal) * p_i.normal
@@ -199,13 +203,13 @@ impl Particles {
 			// let well_l = (well_n - 1.0).abs();
 			// let f_well = -0.0001 * p_i.position * well_l / well_n;
 
-			// let f_well = -0.000001 * p_i.position;
+			let f_well = -0.0000001 * p_i.position;
 
-			let f_friction = -0.001 * p_i.velocity;
+			// let f_friction = -0.003 * p_i.velocity;
 
-			let f_normal = 0.00003 * p_i.normal;
+			let f_normal = 0.00005 * p_i.normal;
 
-			self.list[i].force += f_press /*+ f_well*/ + f_friction + f_normal + f_curv;
+			self.list[i].force += f_press + f_well + f_normal + f_curv;
 			self.list[i].torque += torque;
 		}
 	}
@@ -244,10 +248,10 @@ pub struct Particle {
 
 impl Particle {
 	pub fn integrate(&mut self) {
-		self.velocity += (self.force / self.density) * DT;
-		self.position += self.velocity * DT;
+		// self.velocity += (self.force / self.density) * DT;
+		// self.position += self.velocity * DT;
 
-		// self.position += self.force * DT * 100.0;
+		self.position += self.force * DT * 200.0;
 
 		self.normal += self.normal.cross(self.torque) * DT * 100.0;
 		self.normal = self.normal.normalize();
