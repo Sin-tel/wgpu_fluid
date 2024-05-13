@@ -1,6 +1,4 @@
 Particle based fluid simulation with a simple GPU accelerated rendering pipeline
 
-[![Watch the video](https://img.youtube.com/vi/74Tr55MeT2Q/hqdefault.jpg)](https://www.youtube.com/embed/74Tr55MeT2Q)
+https://github.com/Sin-tel/wgpu_fluid/assets/17052580/e236eb8d-3f1c-414b-b59d-d7e6398cd85d
 
-[<img src="https://img.youtube.com/vi/74Tr55MeT2Q/hqdefault.jpg" width="600" height="300"
-/>](https://www.youtube.com/embed/74Tr55MeT2Q)
